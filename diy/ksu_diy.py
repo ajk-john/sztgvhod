@@ -725,7 +725,8 @@ def check_apk_contents(path: Path, package: str, errors: list[str], notes: list[
                 continue
             data = z.read(member)
             for token in (
-                b"com/rifsxd",
+                b"Lcom/rifsxd/",
+                b"com/rifsxd/ksunext",
                 b"com.rifsxd",
                 b"com_rifsxd_ksunext",
                 b"KernelSU_Next_",
