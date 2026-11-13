@@ -61,3 +61,4 @@
 ## 工作日志
 
 - **2026-11-13**：完成密钥与自签名证书生成（`CN=Toolbox DIY`，`0x0313` / `cb785cce...`），接入 `kernel/`、`userspace/ksud/`、`manager/` 全量重命名与去品牌化，配置 CI 纯 v2 重签校验流程，补全 `diy/ksu_diy.py`、`diy/fetch_builds.py` 与多 agent 统一说明文档（`DIY.md`、`AGENTS.md`、`CLAUDE.md`、`GEMINI.md`、`diy/HANDOFF.md`）。
+- **2026-11-13（发布）**：推送基础 DIY 提交 `aca72840` 至 `ajk-john/sztgvhod`（`dev`），GitHub Actions 页面见 `https://github.com/ajk-john/sztgvhod/actions`。
