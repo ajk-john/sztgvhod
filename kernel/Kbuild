@@ -184,12 +184,22 @@ endif
 KSU_NEW_DCACHE_FLUSH := $(shell grep -q __flush_dcache_area $(srctree)/arch/arm64/include/asm/cacheflush.h ; echo $$?)
 $(info -- KernelSU-Next new DCACHE flush: $(KSU_NEW_DCACHE_FLUSH))
 
+KSU_IS_PR_BUILD ?= 0
+
+ifndef KSU_MANAGER_PACKAGE
+ifeq ($(KSU_IS_PR_BUILD),1)
+KSU_MANAGER_PACKAGE := com.shdmmztfcqk.uyopucyly.pr
+else
+KSU_MANAGER_PACKAGE := com.shdmmztfcqk.uyopucyly
+endif
+endif
+
 ifndef KSU_NEXT_MANAGER_SIZE
-KSU_NEXT_MANAGER_SIZE := 0x3e6
+KSU_NEXT_MANAGER_SIZE := 0x0313
 endif
 
 ifndef KSU_NEXT_MANAGER_HASH
-KSU_NEXT_MANAGER_HASH := 79e590113c4c4c0c222978e413a5faa801666957b1212a328e46c00c69821bf7
+KSU_NEXT_MANAGER_HASH := cb785cce3d6e9bd893b17d019fa0ca71d4122d9dabfa5302fb280cd20886f1a6
 endif
 
 ifdef KSU_MANAGER_PACKAGE

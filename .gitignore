@@ -4,3 +4,14 @@ CLAUDE.md
 AGENTS.md
 .DS_Store
 /userspace/ksud/.lkm_image_bootstrap.o
+
+# KernelSU-Next DIY: signing material must never be committed
+/.diy-secrets/
+*.jks
+*.p12
+*.keystore
+/builds/
+
+# Agent entry files are part of this fork (upstream ignores them)
+!CLAUDE.md
+!AGENTS.md

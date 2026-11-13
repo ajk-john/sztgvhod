@@ -21,6 +21,10 @@ on:
         required: false
         type: boolean
         default: true
+      package_name:
+        required: false
+        type: string
+        default: ''
 jobs:
   build:
     runs-on: ${{ inputs.os }}
@@ -87,6 +91,12 @@ jobs:
           -I$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/aarch64-linux-android
           -I$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include
       run: |
+        PACKAGE_NAME="${{ inputs.package_name }}"
+        if [ -n "$PACKAGE_NAME" ]; then
+          export KSU_PACKAGE_NAME="$PACKAGE_NAME"
+        elif [ "${{ github.event_name }}" = "pull_request" ]; then
+          export KSU_PACKAGE_NAME="com.shdmmztfcqk.uyopucyly.pr"
+        fi
         if [ "${{ inputs.target }}" = "riscv64-linux-android" ]; then
           LLVM_BIN=${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin
           export CLANG_PATH="$LLVM_BIN/riscv64-linux-android35-clang"
@@ -98,6 +108,28 @@ jobs:
           export RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wno-unused-command-line-argument -C link-arg=$BUILTINS"
           export BINDGEN_EXTRA_CLANG_ARGS_riscv64_linux_android="--sysroot=${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot -I${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/riscv64-linux-android -I${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include"
           cargo +nightly-2026-09-23 build --config .github/riscv64-cargo.toml -Z build-std=std,panic_abort --target ${{ inputs.target }} --release --manifest-path ./userspace/ksud/Cargo.toml
+        elif [ -n "${KSU_PACKAGE_NAME:-}" ]; then
+          CROSS_CFG="$(mktemp)"
+          trap 'rm -f "$CROSS_CFG"' EXIT
+          cat > "$CROSS_CFG" <<'EOF'
+        [build.env]
+        passthrough = [
+            "KSU_PACKAGE_NAME",
+            "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android",
+            "BINDGEN_EXTRA_CLANG_ARGS_x86_64_linux_android",
+            "BINDGEN_EXTRA_CLANG_ARGS_riscv64_linux_android",
+        ]
+
+        [target.aarch64-linux-android]
+        pre-build = ["apt-get update && apt-get install -y libclang-dev"]
+
+        [target.x86_64-linux-android]
+        pre-build = ["apt-get update && apt-get install -y libclang-dev"]
+
+        [target.riscv64-linux-android]
+        pre-build = ["apt-get update && apt-get install -y libclang-dev"]
+        EOF
+          CROSS_CONFIG="$CROSS_CFG" CROSS_NO_WARNINGS=0 cross build --target ${{ inputs.target }} --release --manifest-path ./userspace/ksud/Cargo.toml
         else
           CROSS_NO_WARNINGS=0 cross build --target ${{ inputs.target }} --release --manifest-path ./userspace/ksud/Cargo.toml
         fi

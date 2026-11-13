@@ -1,0 +1,33 @@
+#!/bin/sh
+# KernelSU Next DIY guard, shared by every agent working in this repo.
+# Enable once per clone: git config core.hooksPath .githooks
+
+# 1. Never commit signing material
+bad_secrets=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '(^|/)\.diy-secrets/|\.(jks|p12|pfx|keystore)$' || true)
+if [ -n "$bad_secrets" ]; then
+    echo "pre-commit: refusing to commit signing material:" >&2
+    echo "$bad_secrets" >&2
+    exit 1
+fi
+
+# 2. Block leaked upstream or 20-kernelSU-diy identifiers in staged changes
+bad_ids=$(git diff --cached -U0 -- kernel userspace manager .github scripts build.sh justfile | grep -E '^\+[^+]' | grep -E 'com\.cioputlxxcc|io\.qzxnbqm|libfshqpk|libnseqsv|3a0f8ed2a39e8d3e8f61d7eb4499153a97bd64f784a2072b4739a68cd643c3d8|com\.rifsxd\.ksunext|libksud\.so' || true)
+if [ -n "$bad_ids" ]; then
+    echo "pre-commit: refusing to commit 20-kernelSU-diy or upstream leaked identifiers:" >&2
+    echo "$bad_ids" >&2
+    exit 1
+fi
+
+# 3. Package name and certificate must agree across kernel, ksud, manager and CI.
+# On Windows `python3` may be the Store stub, so prefer `python` when it is Python 3.
+if python -c 'import sys; sys.exit(sys.version_info[0] != 3)' >/dev/null 2>&1; then
+    PY=python
+else
+    PY=python3
+fi
+if [ -f diy/ksu_diy.py ]; then
+    if ! "$PY" diy/ksu_diy.py check >/dev/null; then
+        echo "pre-commit: diy/ksu_diy.py check failed" >&2
+        exit 1
+    fi
+fi

@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:name=".KernelSUApplication"
+        android:name=".App"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -14,12 +14,12 @@
         android:localeConfig="@xml/locales_config"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
-        android:theme="@style/Theme.KernelSU"
+        android:theme="@style/Theme.App"
         tools:targetApi="34">
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".ui.HomeActivity"
             android:exported="true"
-            android:theme="@style/Theme.KernelSU"
+            android:theme="@style/Theme.App"
             android:launchMode="singleTask"
             android:taskAffinity="">
             <intent-filter>
@@ -31,12 +31,12 @@
         </activity>
         
         <!-- Single entry point for opening zip files: the zip kind (module or
-             AnyKernel3) is auto-detected in MainActivity -->
+             AnyKernel3) is auto-detected in HomeActivity -->
         <activity-alias
             android:name=".FlashModule"
             android:exported="true"
             android:label="@string/app_name"
-            android:targetActivity=".ui.MainActivity">
+            android:targetActivity=".ui.HomeActivity">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 
@@ -56,14 +56,14 @@
             android:name=".FlashAnyKernel"
             android:exported="true"
             android:label="@string/flash_anykernel"
-            android:targetActivity=".ui.MainActivity" />
+            android:targetActivity=".ui.HomeActivity" />
 
         <activity
-            android:name=".ui.webui.WebUIActivity"
+            android:name=".ui.webui.WebActivity"
             android:autoRemoveFromRecents="true"
             android:documentLaunchMode="intoExisting"
             android:exported="false"
-            android:theme="@style/Theme.KernelSU.WebUI" />
+            android:theme="@style/Theme.App.WebUI" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

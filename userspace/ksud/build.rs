@@ -250,6 +250,11 @@ fn main() {
         .write_all(name.trim().as_bytes())
         .expect("Failed to write VERSION_NAME");
 
+    println!("cargo:rerun-if-env-changed=KSU_PACKAGE_NAME");
+    if env::var("KSU_PACKAGE_NAME").map_or(true, |v| v.is_empty()) {
+        println!("cargo:rustc-env=KSU_PACKAGE_NAME=com.shdmmztfcqk.uyopucyly");
+    }
+
     let target_os = env::var("CARGO_CFG_TARGET_OS").expect("CARGO_CFG_TARGET_OS not set");
     if target_os == "android" {
         configure_bindgen();

@@ -15,6 +15,14 @@ plugins {
 val managerVersionCode: Int by rootProject.extra
 val managerVersionName: String by rootProject.extra
 
+val isPrBuild = findProperty("IS_PR_BUILD")?.toString()?.toBoolean() == true
+val defaultManagerPackageName = if (isPrBuild) "com.shdmmztfcqk.uyopucyly.pr" else "com.shdmmztfcqk.uyopucyly"
+val defaultManagerName = if (isPrBuild) "Toolbox PR" else "Toolbox"
+val managerPackageName = findProperty("KSU_PACKAGE_NAME")?.toString() ?: defaultManagerPackageName
+val managerName = findProperty("KSU_NAME")?.toString() ?: defaultManagerName
+// GitHub "owner/repo" whose releases the manager checks for updates; empty disables the check
+val managerUpdateRepo = findProperty("KSU_UPDATE_REPO")?.toString() ?: System.getenv("KSU_UPDATE_REPO") ?: ""
+
 apksign {
     storeFileProperty = "KEYSTORE_FILE"
     storePasswordProperty = "KEYSTORE_PASSWORD"
@@ -23,7 +31,7 @@ apksign {
 }
 
 android {
-    namespace = "com.rifsxd.ksunext"
+    namespace = "io.bpaqxkj.cbpr"
 
     buildTypes {
         release {
@@ -36,8 +44,17 @@ android {
     buildFeatures {
         aidl = true
         buildConfig = true
+        resValues = true
         compose = true
         prefab = true
+    }
+
+    defaultConfig {
+        applicationId = managerPackageName
+
+        buildConfigField("boolean", "IS_PR_BUILD", isPrBuild.toString())
+        buildConfigField("String", "UPDATE_REPO", "\"${managerUpdateRepo.replace("\"", "\\\"")}\"")
+        resValue("string", "app_name", managerName)
     }
 
     kotlinOptions {
@@ -68,7 +85,7 @@ android {
     applicationVariants.all {
         outputs.forEach {
             val output = it as BaseVariantOutputImpl
-            output.outputFileName = "KernelSU_Next_${managerVersionName}_${managerVersionCode}-$name.apk"
+            output.outputFileName = "Toolbox_${managerVersionName}_${managerVersionCode}-$name.apk"
         }
         kotlin.sourceSets {
             getByName(name) {

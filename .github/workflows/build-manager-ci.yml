@@ -2,20 +2,30 @@ name: Build Manager CI
 
 on:
   push:
-    branches: [ "dev" ]
+    branches: [ "main", "dev" ]
     paths:
       - '.github/workflows/build-manager.yml'
+      - '.github/workflows/build-manager-ci.yml'
       - '.github/workflows/build-lkm.yml'
+      - '.github/workflows/ddk-lkm-ksu.yml'
+      - '.github/workflows/ddk-lkm-susfs.yml'
       - '.github/workflows/ksud.yml'
+      - '.github/workflows/ksuinit.yml'
+      - 'diy/**'
       - 'manager/**'
       - 'kernel/**'
       - 'userspace/**'
   pull_request:
-    branches: [ "dev" ]
+    branches: [ "main", "dev" ]
     paths:
       - '.github/workflows/build-manager.yml'
+      - '.github/workflows/build-manager-ci.yml'
       - '.github/workflows/build-lkm.yml'
+      - '.github/workflows/ddk-lkm-ksu.yml'
+      - '.github/workflows/ddk-lkm-susfs.yml'
       - '.github/workflows/ksud.yml'
+      - '.github/workflows/ksuinit.yml'
+      - 'diy/**'
       - 'manager/**'
       - 'kernel/**'
       - 'userspace/**'
@@ -23,15 +33,88 @@ on:
   workflow_dispatch:
 
 jobs:
+  generate-key:
+    runs-on: ubuntu-latest
+    outputs:
+      manager_package: ${{ steps.meta.outputs.manager_package }}
+      ksu_is_pr_build: ${{ steps.meta.outputs.ksu_is_pr_build }}
+      expected_size: ${{ steps.extract.outputs.expected_size }}
+      expected_hash: ${{ steps.extract.outputs.expected_hash }}
+      keystore: ${{ steps.gen.outputs.keystore }}
+      keystore_password: ${{ steps.gen.outputs.keystore_password }}
+      key_password: ${{ steps.gen.outputs.key_password }}
+    steps:
+      - name: Set build metadata
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "manager_package=com.shdmmztfcqk.uyopucyly.pr" >> $GITHUB_OUTPUT
+            echo "ksu_is_pr_build=1" >> $GITHUB_OUTPUT
+          else
+            echo "manager_package=" >> $GITHUB_OUTPUT
+            echo "ksu_is_pr_build=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate temporary keystore
+        if: github.event_name == 'pull_request'
+        id: gen
+        run: |
+          KEYSTORE_PASSWORD=$(openssl rand -hex 32)
+          KEY_PASSWORD=$(openssl rand -hex 32)
+          echo "::add-mask::$KEYSTORE_PASSWORD"
+          echo "::add-mask::$KEY_PASSWORD"
+          echo "keystore_password=$KEYSTORE_PASSWORD" >> $GITHUB_OUTPUT
+          echo "key_password=$KEY_PASSWORD" >> $GITHUB_OUTPUT
+
+          keytool -genkeypair \
+            -alias pr-key \
+            -keyalg RSA -keysize 2048 \
+            -validity 1 \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
+            -dname "CN=Toolbox PR Build" \
+            -storetype JKS \
+            -keystore pr-key.jks
+
+          echo "keystore=$(base64 -w 0 pr-key.jks)" >> $GITHUB_OUTPUT
+
+      - name: Extract certificate hash and size
+        if: github.event_name == 'pull_request'
+        id: extract
+        env:
+          STORE_PASS: ${{ steps.gen.outputs.keystore_password }}
+        run: |
+          keytool -exportcert \
+            -alias pr-key \
+            -keystore pr-key.jks \
+            -storepass "$STORE_PASS" \
+            -file pr-cert.der
+
+          SIZE_DEC=$(stat -c%s pr-cert.der)
+          SIZE_HEX=$(printf '0x%04x' "$SIZE_DEC")
+          echo "expected_size=$SIZE_HEX" >> $GITHUB_OUTPUT
+
+          HASH=$(sha256sum pr-cert.der | awk '{print $1}')
+          echo "expected_hash=$HASH" >> $GITHUB_OUTPUT
+
+          echo "Certificate size: $SIZE_HEX ($SIZE_DEC bytes)"
+          echo "Certificate hash: $HASH"
+
   build-lkm:
+    needs: generate-key
     uses: ./.github/workflows/build-lkm.yml
+    with:
+      manager_package: ${{ needs.generate-key.outputs.manager_package || '' }}
+      expected_manager_size: ${{ needs.generate-key.outputs.expected_size || '' }}
+      expected_manager_hash: ${{ needs.generate-key.outputs.expected_hash || '' }}
+      ksu_is_pr_build: ${{ needs.generate-key.outputs.ksu_is_pr_build || '' }}
     secrets: inherit
 
   build-ksuinit:
     uses: ./.github/workflows/ksuinit.yml
 
   build-ksud:
-    needs: [build-lkm, build-ksuinit]
+    needs: [generate-key, build-lkm, build-ksuinit]
     strategy:
       matrix:
         include:
@@ -45,9 +128,10 @@ jobs:
     with:
       target: ${{ matrix.target }}
       os: ${{ matrix.os }}
+      package_name: ${{ needs.generate-key.outputs.manager_package || '' }}
 
   build-ksud-extra:
-    needs: [build-lkm, build-ksuinit]
+    needs: [generate-key, build-lkm, build-ksuinit]
     strategy:
       matrix:
         include:
@@ -65,13 +149,12 @@ jobs:
     with:
       target: ${{ matrix.target }}
       os: ${{ matrix.os }}
+      package_name: ${{ needs.generate-key.outputs.manager_package || '' }}
 
   build-manager:
-    needs: build-ksud
+    needs: [generate-key, build-ksud]
+    if: always() && needs.generate-key.result == 'success' && needs.build-ksud.result == 'success'
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        spoofed: [ false, true ]
 
     defaults:
       run:
@@ -83,11 +166,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Spoof Package ID
-        if: matrix.spoofed == true
-        run: |
-          chmod +x spoof
-          ./spoof
+      - name: Check DIY configuration
+        working-directory: .
+        run: python3 diy/ksu_diy.py check
 
       - name: Setup need_upload
         id: need_upload
@@ -99,16 +180,37 @@ jobs:
           fi
 
       - name: Write key
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE: ${{ secrets.KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ ! -z "${{ secrets.KEYSTORE }}" ]; then
+          if [ -n "$KEYSTORE" ]; then
             {
-              echo KEYSTORE_PASSWORD='${{ secrets.KEYSTORE_PASSWORD }}'
-              echo KEY_ALIAS='${{ secrets.KEY_ALIAS }}'
-              echo KEY_PASSWORD='${{ secrets.KEY_PASSWORD }}'
-              echo KEYSTORE_FILE='key.jks'
+              printf 'KEYSTORE_PASSWORD=%s\n' "$KEYSTORE_PASSWORD"
+              printf 'KEY_ALIAS=%s\n' "$KEY_ALIAS"
+              printf 'KEY_PASSWORD=%s\n' "$KEY_PASSWORD"
+              printf 'KEYSTORE_FILE=%s\n' 'key.jks'
             } >> gradle.properties
-            echo ${{ secrets.KEYSTORE }} | base64 -d > key.jks
+            printf '%s\n' "$KEYSTORE" | base64 -d > key.jks
           fi
+
+      - name: Write PR key
+        if: github.event_name == 'pull_request'
+        env:
+          PR_KEYSTORE: ${{ needs.generate-key.outputs.keystore }}
+          PR_KEYSTORE_PASSWORD: ${{ needs.generate-key.outputs.keystore_password }}
+          PR_KEY_PASSWORD: ${{ needs.generate-key.outputs.key_password }}
+        run: |
+          echo "$PR_KEYSTORE" | base64 -d > pr-key.jks
+          {
+            echo KEYSTORE_PASSWORD="$PR_KEYSTORE_PASSWORD"
+            echo KEY_ALIAS='pr-key'
+            echo KEY_PASSWORD="$PR_KEY_PASSWORD"
+            echo KEYSTORE_FILE='pr-key.jks'
+          } >> gradle.properties
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -142,25 +244,77 @@ jobs:
           mkdir -p app/src/main/jniLibs/arm64-v8a
           mkdir -p app/src/main/jniLibs/x86_64
           mkdir -p app/src/main/jniLibs/riscv64
-          cp -f ../aarch64-linux-android/release/ksud ../manager/app/src/main/jniLibs/arm64-v8a/libksud.so
-          cp -f ../x86_64-linux-android/release/ksud ../manager/app/src/main/jniLibs/x86_64/libksud.so
-          cp -f ../riscv64-linux-android/release/ksud ../manager/app/src/main/jniLibs/riscv64/libksud.so
+          cp -f ../aarch64-linux-android/release/ksud ../manager/app/src/main/jniLibs/arm64-v8a/libmbksab.so
+          cp -f ../x86_64-linux-android/release/ksud ../manager/app/src/main/jniLibs/x86_64/libmbksab.so
+          cp -f ../riscv64-linux-android/release/ksud ../manager/app/src/main/jniLibs/riscv64/libmbksab.so
 
       - name: Build with Gradle
-        run: ./gradlew clean assembleRelease
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            ./gradlew clean assembleRelease -PIS_PR_BUILD=true
+          else
+            ./gradlew clean assembleRelease
+          fi
+
+      - name: Re-sign APK (v2-only) and verify
+        env:
+          PR_KEYSTORE_PASSWORD: ${{ needs.generate-key.outputs.keystore_password }}
+          PR_KEY_PASSWORD: ${{ needs.generate-key.outputs.key_password }}
+          PROD_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          PROD_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          PROD_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          APKSIGNER=$(ls -1d "$SDK_ROOT"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$APKSIGNER" ] || [ ! -x "$APKSIGNER" ]; then
+            echo "::error::apksigner not found under $SDK_ROOT/build-tools"
+            exit 1
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            KS_FILE="pr-key.jks"
+            KS_ALIAS="pr-key"
+            export KS_PASS="$PR_KEYSTORE_PASSWORD"
+            export KEY_PASS="$PR_KEY_PASSWORD"
+          else
+            KS_FILE="key.jks"
+            KS_ALIAS="$PROD_KEY_ALIAS"
+            export KS_PASS="$PROD_KEYSTORE_PASSWORD"
+            export KEY_PASS="$PROD_KEY_PASSWORD"
+          fi
+          if [ ! -f "$KS_FILE" ] || [ -z "$KS_ALIAS" ]; then
+            echo "::error::Missing signing keystore ($KS_FILE) or alias"
+            exit 1
+          fi
+          for apk in app/build/outputs/apk/release/*.apk; do
+            "$APKSIGNER" sign \
+              --ks "$KS_FILE" \
+              --ks-key-alias "$KS_ALIAS" \
+              --ks-pass env:KS_PASS \
+              --key-pass env:KEY_PASS \
+              --v1-signing-enabled false \
+              --v2-signing-enabled true \
+              --v3-signing-enabled false \
+              --v4-signing-enabled false \
+              "$apk"
+            "$APKSIGNER" verify --verbose "$apk"
+          done
+
+      - name: Verify APK with ksu_diy.py
+        if: github.event_name != 'pull_request'
+        run: python3 ../diy/ksu_diy.py check --apk app/build/outputs/apk/release/*.apk
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
-        if: ${{ ( github.event_name != 'pull_request' && (github.ref == 'refs/heads/dev' )) || github.ref_type == 'tag' }}
+        if: ${{ github.event_name == 'pull_request' || ( github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' )) || github.ref_type == 'tag' }}
         with:
-          name: ${{ matrix.spoofed && 'manager-spoofed' || 'manager' }}
+          name: manager
           path: manager/app/build/outputs/apk/release/*.apk
 
       - name: Upload mappings
         uses: actions/upload-artifact@v7
-        if: ${{ ( github.event_name != 'pull_request' && (github.ref == 'refs/heads/dev' )) || github.ref_type == 'tag' }}
+        if: ${{ ( github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' )) || github.ref_type == 'tag' }}
         with:
-          name: ${{ matrix.spoofed && 'mappings-spoofed' || 'mappings' }}
+          name: mappings
           path: "manager/app/build/outputs/mapping/release/"
 
       - name: Bot session cache
@@ -182,7 +336,7 @@ jobs:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           COMMIT_URL: ${{ github.event.head_commit.url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          TITLE: ${{ matrix.spoofed && 'Dev Manager Build (Spoofed)' || 'Dev Manager Build (Normal)' }}
+          TITLE: Dev Manager Build
           BRANCH: ${{ github.ref_name }}
         run: |
           if [ ! -z "${{ secrets.BOT_TOKEN }}" ]; then

@@ -27,6 +27,11 @@ on:
         required: false
         default: ''
         type: string
+      ksu_is_pr_build:
+        description: 'PR build flag (0 or 1)'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   build-kernelsu-ko:
@@ -45,8 +50,9 @@ jobs:
         MANAGER_PACKAGE: ${{ inputs.manager_package }}
         EXPECTED_MANAGER_SIZE: ${{ inputs.expected_manager_size }}
         EXPECTED_MANAGER_HASH: ${{ inputs.expected_manager_hash }}
+        KSU_IS_PR_BUILD: ${{ inputs.ksu_is_pr_build }}
       run: |
-        git config --global --add safe.directory /__w/KernelSU-Next/KernelSU-Next
+        git config --global --add safe.directory '*'
 
         cd kernel
 
@@ -61,6 +67,11 @@ jobs:
         fi
         if [ -n "$EXPECTED_MANAGER_HASH" ]; then
           EXTRA_ARGS="$EXTRA_ARGS KSU_NEXT_MANAGER_HASH=$EXPECTED_MANAGER_HASH"
+        fi
+        if [ -n "$KSU_IS_PR_BUILD" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_IS_PR_BUILD=$KSU_IS_PR_BUILD"
+        elif [ "${{ github.event_name }}" = "pull_request" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_IS_PR_BUILD=1"
         fi
 
         CONFIG_KSU=m CC=clang make $EXTRA_ARGS
@@ -92,6 +103,7 @@ jobs:
         MANAGER_PACKAGE: ${{ inputs.manager_package }}
         EXPECTED_MANAGER_SIZE: ${{ inputs.expected_manager_size }}
         EXPECTED_MANAGER_HASH: ${{ inputs.expected_manager_hash }}
+        KSU_IS_PR_BUILD: ${{ inputs.ksu_is_pr_build }}
       run: |
         cd kernel
         make clean
@@ -136,6 +148,11 @@ jobs:
         fi
         if [ -n "$EXPECTED_MANAGER_HASH" ]; then
           EXTRA_ARGS="$EXTRA_ARGS KSU_NEXT_MANAGER_HASH=$EXPECTED_MANAGER_HASH"
+        fi
+        if [ -n "$KSU_IS_PR_BUILD" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_IS_PR_BUILD=$KSU_IS_PR_BUILD"
+        elif [ "${{ github.event_name }}" = "pull_request" ]; then
+          EXTRA_ARGS="$EXTRA_ARGS KSU_IS_PR_BUILD=1"
         fi
         
         MDIR=$(realpath .)

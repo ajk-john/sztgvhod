@@ -12,7 +12,7 @@ CROSS_NO_WARNINGS=0 cross build --target aarch64-linux-android --release --manif
 
 mkdir -p manager/app/src/main/jniLibs/arm64-v8a/
 
-cp userspace/ksud/target/aarch64-linux-android/release/ksud manager/app/src/main/jniLibs/arm64-v8a/libksud.so
+cp userspace/ksud/target/aarch64-linux-android/release/ksud manager/app/src/main/jniLibs/arm64-v8a/libmbksab.so
 
 cd manager
 
@@ -20,4 +20,4 @@ cd manager
 
 cd ..
 
-adb install manager/app/build/outputs/apk/release/KernelSU_Next_v*.apk
+adb install manager/app/build/outputs/apk/release/Toolbox_*.apk

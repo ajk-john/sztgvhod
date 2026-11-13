@@ -37,3 +37,6 @@
 -dontwarn javax.lang.model.util.SimpleTypeVisitor8
 -dontwarn javax.lang.model.util.Types
 -dontwarn javax.tools.Diagnostic$Kind
+
+-keep class io.bpaqxkj.cbpr.Natives { *; }
+-keep class io.bpaqxkj.cbpr.Natives$Profile { *; }
